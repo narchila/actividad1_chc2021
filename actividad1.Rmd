@@ -1,0 +1,388 @@
+---
+title: "Actividad No.1"
+author: "Nicolás Archila"
+date: "2026-11-22"
+output: html_document
+---
+# **Universidad Pedagógica y Tecnológica de Colombia**
+### **Ciencia de Datos y Aprendizaje Automático para la toma de decisiones**
+### **Docente: Jairo Enrique Alba Talero**
+### **Estudiante: Nicolás Andrés Archila Ardila - Código: 202624694**
+
+## Actividad No. 1
+
+<div style="text-align: justify">
+El presente ejercicio tiene como objetivo analizar el último Censo de Habitantes de Calle (CHC, 2021). El CHC es un proyecto del Departamento Administrativo Nacional de Estadística (DANE), enmarcado en los lineamientos de Política Pública Social para Habitantes de Calle, generados por la Ley 1641 de 2013. Su objetivo es caracterizar a las personas que viven en esta situación en el país, generando una línea base como insumo para la política pública dirigida a esta población. El proyecto se implementó en 444 municipios priorizados, en 26 departamentos. En términos generales, la encuesta abarca las siguientes temáticas: i) Demografía; ii) Salud; iii) Habitabilidad en calle; iv) Redes de apoyo; v) Convivencia y seguridad.
+
+### Planteamiento del problema
+
+La actividad plantea responder las siguientes preguntas: 
+
+¿Cuánto tiempo llevan en la calle las personas censadas en 2021? 
+¿cómo varía según la razón por la que empezaron a vivir allí y en qué municipios se concentra esta población?
+
+### Objetivo principal
+
+Analizar la permanencia en calle de los habitantes de la calle censados en el CHC en 2021, específicamente, en relación con la principal razón por la que iniciaron la vida en calle y con el municipio donde fueron censados.
+
+### Objetivos específicos
+
+1. Caracterizar los niveles de permanencia de la habitabilidad en calle (reciente, intermedia y prolongada) y estimar qué proporción de la población corresponde a cada nivel.
+
+2. Determinar si las razones de inicio se asocian con trayectorias de permanencia diferentes, contrastando las causas económicas con las sociales y de consumo de sustancia psicoactivas.
+
+3. Identificar diferencias territoriales en la permanencia entre los municipios con mayor concentración de habitantes de la calle, buscando generar un insumo para la priorización de la atención de esta población.
+
+</div>
+
+
+### 1. Visualización y carga de datos
+
+1.1 Visualización en carpeta
+```{r setup, include=FALSE}
+list.files("datos")
+```
+
+1.2 Cargue de la matriz
+```{r, results='hide'}
+data <- read.csv("datos/CHC_base_anonimizada09-09-2021.csv")
+
+```
+
+### 2. Exploracion de los datos
+```{r, results='hide'}
+head(data)
+```
+
+2.1 Dimensiones 
+```{r}
+dim(data)
+```
+Inicialmente el censo cuenta con 130 variables y 6250 registros.
+
+2.2 Nombres de columnas
+```{r}
+colnames(data)
+```
+Los nombres de las variables han sido codificados, por lo que es necesario revisar las etiquetas definidas por el DANE en la documentación del CHC, específicamente, en su Diccionario de Datos. 
+
+2.3 Tipo de datos de columnas
+
+```{r, results='hide'}
+str(data)
+```
+La codificación numérica se confirma al verificar el tipo de variables. Tal como se observa en el chunk anterior.
+
+
+### 3. Limpieza de datos I: Tratamiento de datos duplicados
+
+Los registros duplicados se identifican y tratan antes de construir el dataframe con las variables objetivo, dado que este proceso podría implicar la pérdida de información que permite distinguir e identificar individualmente a cada persona.
+
+```{r}
+# 3.1. Filas totalmente vacías (sin ningún dato)
+vacias <- rowSums(!is.na(data)) == 0
+sum(vacias)
+
+# 3.2. Filas idénticas en las 130 columnas
+sum(duplicated(data))
+
+# 3.3. Filas idénticas en el contenido (129 columnas, sin DIRECTORIO)
+contenido     <- data[, names(data) != "DIRECTORIO"]
+dup_contenido <- duplicated(contenido)
+sum(dup_contenido)
+
+# 3.4. Se eliminan las filas vacías y los duplicados
+eliminar <- vacias | dup_contenido
+sum(eliminar)
+
+# 3.5. Base sin duplicados
+data_dep <- data[!eliminar, ]
+nrow(data_dep)
+
+# 3.6. Comprobación
+cat("Filas originales:", nrow(data), "\n",
+    "Filas eliminadas:", sum(eliminar), "\n",
+    "Filas finales:   ", nrow(data_dep), "\n")
+```
+Por otra parte, la base completa no tiene ningún registro sin vacíos, en buena parte por los filtros del cuestionario, que dejan sin diligenciar las preguntas que no aplican a cada persona. Por ello, el diagnóstico y la decisión de imputar o excluir se hacen solo sobre las variables del estudio.
+
+### 4. Selección de variables
+
+Para el desarrollo del problema, se seleccionaron dos variables principales: la variable cuantitativa 'Tiempo en calle en años', construida a partir de las variables P23S1R y P23S2R del CHC, y la variable 'Razón de inicio', correspondiente a la variable P22. Adicionalmente, se incorporaron las variables asociadas a la división político administrativa del territorio: 'Municipio o área no municipalizada' (P1S1) y 'Departamento' (P1).
+
+```{r}
+datos_def <- data.frame(
+  tiempo    = data_dep$P23S1R + data_dep$P23S2 / 12,
+  razon     = data_dep$P22,
+  municipio = ifelse(is.na(data_dep$P1S1), NA,
+                     formatC(as.integer(data_dep$P1S1), width = 5, flag = "0")),
+  depto     = ifelse(is.na(data_dep$P1), NA,
+                     formatC(as.integer(data_dep$P1), width = 2, flag = "0"))
+)
+
+names(datos_def) <- c("Tiempo en calle en años",
+                    "Razón de inicio",
+                    "Municipio o área no municipalizada",
+                    "Departamento")
+
+```
+
+4.1 Dimensión del dataframe depurado
+```{r}
+dim(datos_def)
+```
+En este orden de ideas, se construye en conjunto de más pequeño (datos_def), el cual contiene las variables seleccionadas. La característica 'Tiempo en calle en años' fue construida a partir de la suma de P23S1R y P23S2R, esta última dividida en 12 meses. El resultado es un dataframe de cuatro variables y 6195 filas. 
+
+4.2 Decodificación de 'Razón de inicio'
+
+```{r}
+table(datos_def[["Razón de inicio"]], useNA = "ifany")   # revisión previa: códigos 1 a 11
+
+etiquetas_razon <- c("Consumo de sustancias psicoactivas", "Por gusto personal",
+  "Amenaza o riesgo para su vida o integridad física", "Influencia de otras personas",
+  "Dificultades económicas", "Falta de trabajo", "Conflictos o dificultades familiares",
+  "Abuso sexual", "Siempre ha vivido en la calle",
+  "Víctima del conflicto armado o desplazado", "Otra")
+
+datos_def[["Razón de inicio"]] <- factor(datos_def[["Razón de inicio"]],
+                                         levels = 1:11, labels = etiquetas_razon)
+
+str(datos_def)
+table(datos_def[["Razón de inicio"]], useNA = "ifany")
+```
+
+4.3 Decodificación territorial con DIVIPOLA
+
+Los códigos de municipio (P1S1) y departamento (P1) se decodificaron con la División Político-Administrativa de Colombia (DIVIPOLA). Se usó la versión publicada por el DANE en el Portal de Datos Abiertos de Colombia. En este sentido, se agregaron dos variables más al dataframe: 'Nombre del municipio' y 'Nombre del departamento'.
+
+```{r}
+url_divipola <- "https://www.datos.gov.co/resource/gdxc-w37w.csv?$limit=2000"
+
+divipola <- read.csv(url_divipola,
+                     colClasses = "character",
+                     encoding   = "UTF-8") 
+
+# Copia local
+write.csv(divipola, "divipola.csv", row.names = FALSE, fileEncoding = "UTF-8")
+dim(divipola)                                 
+
+# Tabla de departamentos
+deptos <- unique(divipola[, c("cod_dpto", "dpto")])
+
+# Cruce por código:
+pos_mun <- match(datos_def[["Municipio o área no municipalizada"]], divipola$cod_mpio)
+pos_dep <- match(datos_def[["Departamento"]], deptos$cod_dpto)
+
+datos_def[["Nombre del municipio"]]    <- divipola$nom_mpio[pos_mun]
+datos_def[["Nombre del departamento"]] <- deptos$dpto[pos_dep]
+
+# Control: ningún código debe quedar sin nombre
+sum(is.na(datos_def[["Nombre del municipio"]]))
+sum(is.na(datos_def[["Nombre del departamento"]]))
+
+# Municipios y departamentos decodificados
+length(unique(datos_def[["Nombre del municipio"]]))
+length(unique(datos_def[["Nombre del departamento"]]))
+head(unique(datos_def[, c("Municipio o área no municipalizada", "Nombre del municipio",
+                          "Departamento", "Nombre del departamento")]), 10)
+```
+
+
+### 5. Limpieza de datos II: Tratamiento de datos faltantes
+
+```{r}
+# 1. Cuántos valores faltan por variable
+faltantes <- data.frame(
+  Faltantes  = colSums(is.na(datos_def)),
+  Porcentaje = round(colMeans(is.na(datos_def)) * 100, 1)
+)
+faltantes
+
+# 2. Patrón de los faltantes: ¿faltan en las mismas personas?
+table(Falta_tiempo = is.na(datos_def[["Tiempo en calle en años"]]),
+      Falta_razon  = is.na(datos_def[["Razón de inicio"]]))
+
+# 3. Registros completos e incompletos
+sum(complete.cases(datos_def))
+sum(!complete.cases(datos_def))
+
+# 4. Tratamiento: exclusión de los registros incompletos
+datos_def_final <- datos_def[complete.cases(datos_def), ]
+
+# 5. Comprobación
+colSums(is.na(datos_def_final))
+cat("Registros antes:    ", nrow(datos_def), "\n",
+    "Registros excluidos:", nrow(datos_def) - nrow(datos_def_final), "\n",
+    "Registros finales:  ", nrow(datos_def_final), "\n")
+```
+
+Las variables "Tiempo en calle en años" y "Razón de inicio" presentan 858 valores faltantes cada una (13,8 %).Los faltantes coinciden en los mismos registros, lo que corresponde a personas a quienes no se aplicó la entrevista. Por tratarse de información no recolectada, no se imputó y se excluyeron esos registros. El análisis se realizó sobre 5.337 personas (86,2 % de la base depurada).
+
+### 6. Análisis Exploratorio de Datos (EDA)
+
+```{r}
+tiempo <- datos_def_final[["Tiempo en calle en años"]]
+razon  <- datos_def_final[["Razón de inicio"]]
+
+# Etiquetas cortas
+razon_corta <- razon
+levels(razon_corta) <- c("Consumo de SPA", "Por gusto personal", "Amenaza o riesgo para su vida",
+                         "Influencia de otras personas", "Dificultades económicas",
+                         "Falta de trabajo", "Conflictos familiares", "Abuso sexual",
+                         "Siempre ha vivido en la calle", "Víctima del conflicto armado", "Otra")
+```
+
+6.1 Medidas descriptivas de tiempo en calle
+
+```{r}
+resumen <- summary(tiempo)
+resumen
+```
+```{r, fig.width=8, fig.height=5}
+# Histograma del tiempo en calle
+hist(tiempo, breaks = seq(0, 62, by = 2), col = "steelblue", border = "white",
+     main = "Distribución del tiempo en calle",
+     xlab = "Años viviendo en la calle", ylab = "Número de personas")
+abline(v = resumen["Mean"],   col = "red",       lwd = 2, lty = 2)
+abline(v = resumen["Median"], col = "darkgreen", lwd = 2)
+legend("topright", legend = c(paste("Media =", round(resumen["Mean"], 1)),
+                              paste("Mediana =", resumen["Median"])),
+       col = c("red", "darkgreen"), lty = c(2, 1), lwd = 2, bty = "n")
+
+# Boxplot del tiempo en calle
+boxplot(tiempo, horizontal = TRUE, col = "lightblue",
+        main = "Boxplot del tiempo en calle", xlab = "Años viviendo en la calle")
+```
+
+6.2 Niveles de permanencia en calle
+
+Se definen tres niveles: reciente (menos de 2 años), intermedia (de 2 a menos de 16 años) y prolongada (16 años o más). Los niveles de permanencia se definieron a partir de la distribución del tiempo en calle, usando el primer cuartil (2 años) y el tercer cuartil (16 años) como puntos de corte. Así se distinguen la permanencia reciente (cuarta parte inferior), la intermedia (mitad central) y la prolongada (cuarta parte superior).
+
+```{r, fig.width=7, fig.height=4}
+nivel <- cut(tiempo,
+             breaks = c(0, resumen["1st Qu."], resumen["3rd Qu."], Inf),
+             right = FALSE,
+             labels = c("Reciente (< 2 años)", "Intermedia (2 a < 16 años)",
+                        "Prolongada (16 años o más)"))
+
+tabla_nivel <- table(nivel)
+data.frame(Personas   = as.vector(tabla_nivel),
+           Porcentaje = round(as.vector(prop.table(tabla_nivel)) * 100, 1),
+           row.names  = names(tabla_nivel))
+
+```
+
+6.3 Tiempo en calle según la razón de inicio
+
+```{r}
+# Frecuencias de la razón de inicio
+frec_razon <- sort(table(razon), decreasing = TRUE)
+data.frame(Frecuencia = as.vector(frec_razon),
+           Porcentaje = round(as.vector(prop.table(frec_razon)) * 100, 1),
+           row.names  = names(frec_razon))
+
+# Tiempo en calle por razón de inicio
+por_razon <- aggregate(tiempo ~ razon, FUN = function(v) c(n = length(v), media = mean(v),
+                                                           mediana = median(v)))
+por_razon <- data.frame(Razon = por_razon$razon, round(por_razon$tiempo, 1))
+por_razon[order(-por_razon$mediana), ]
+
+# Agrupación de las razones: causas económicas, sociales y de consumo
+grupo <- ifelse(razon %in% c("Dificultades económicas", "Falta de trabajo"), "Económicas",
+         ifelse(razon == "Consumo de sustancias psicoactivas", "Consumo de SPA",
+         ifelse(razon %in% c("Conflictos o dificultades familiares", "Influencia de otras personas",
+                             "Abuso sexual", "Amenaza o riesgo para su vida o integridad física",
+                             "Víctima del conflicto armado o desplazado"), "Sociales", "Otras")))
+grupo <- factor(grupo, levels = c("Económicas", "Sociales", "Consumo de SPA", "Otras"))
+
+por_grupo <- aggregate(tiempo ~ grupo, FUN = function(v) c(n = length(v), media = mean(v),
+                                                           mediana = median(v),
+                                                           pct_prolongada = mean(v >= 16) * 100))
+data.frame(Grupo = por_grupo$grupo, round(por_grupo$tiempo, 1))
+```
+
+```{r, fig.width=9, fig.height=6}
+# Barras de la razón de inicio
+par(mar = c(5, 15, 4, 2))
+barplot(sort(table(razon_corta)), horiz = TRUE, las = 1, col = "steelblue",
+        main = "Principal razón para iniciar la vida en calle",
+        xlab = "Número de personas")
+
+# Boxplot del tiempo en calle según la razón de inicio (ordenado por mediana)
+razon_ord <- reorder(razon_corta, tiempo, median)
+boxplot(tiempo ~ razon_ord, horizontal = TRUE, las = 1, col = "lightblue",
+        main = "Tiempo en calle según razón de inicio",
+        xlab = "Años viviendo en la calle", ylab = "")
+
+# Boxplot por tipo de causa
+par(mar = c(5, 9, 4, 2))
+boxplot(tiempo ~ grupo, horizontal = TRUE, las = 1, col = "lightblue",
+        main = "Tiempo en calle según tipo de causa",
+        xlab = "Años viviendo en la calle", ylab = "")
+par(mar = c(5, 4, 4, 2))
+```
+
+
+6.5 Top 10 de municipios
+
+**Métrica**: número de personas censadas en la base sin duplicados (datos_def), que incluye a las personas registradas por observación. El tiempo en calle de cada municipio se calcula sobre las personas entrevistadas (datos_def_final).
+
+6.4 Top 10 de municipios
+
+**Métrica**: número de personas censadas en la base sin duplicados (datos_def), que incluye a las personas registradas por observación. El tiempo en calle de cada municipio se calcula sobre las personas entrevistadas (datos_def_final). Los municipios se agrupan por su código DIVIPOLA y se identifican con el nombre decodificado en la sección 4.3.
+
+```{r, fig.width=8, fig.height=5}
+mun_censados <- datos_def[["Municipio o área no municipalizada"]]
+mun_final    <- datos_def_final[["Municipio o área no municipalizada"]]
+
+# Top 10 por número de personas censadas (agrupado por código)
+censados <- table(mun_censados)
+top      <- sort(censados, decreasing = TRUE)[1:10]
+codigos  <- names(top)
+
+top10 <- data.frame(
+  Puesto       = 1:10,
+  Municipio    = codigos,
+  Censados     = as.vector(top),
+  Porcentaje   = round(as.vector(top) / sum(censados) * 100, 1),
+  Entrevistas  = as.vector(table(mun_final)[codigos]),
+  Media_anos   = round(as.vector(tapply(tiempo, mun_final, mean)[codigos]), 1),
+  Mediana_anos = round(as.vector(tapply(tiempo, mun_final, median)[codigos]), 1)
+)
+
+# Nombres desde la base decodificada (sección 4.3)
+pos <- match(top10$Municipio, mun_censados)
+top10$Nombre_municipio    <- datos_def[["Nombre del municipio"]][pos]
+top10$Nombre_departamento <- datos_def[["Nombre del departamento"]][pos]
+top10$Etiqueta            <- paste0(top10$Nombre_municipio, " (", top10$Municipio, ")")
+
+# Tabla final
+top10[, c("Puesto", "Etiqueta", "Nombre_departamento", "Censados", "Porcentaje",
+          "Entrevistas", "Media_anos", "Mediana_anos")]
+
+cat("Los 10 municipios reúnen", sum(top10$Censados), "personas (",
+    round(sum(top10$Censados) / sum(censados) * 100, 1), "% del total )\n")
+
+# Gráfico 1: personas censadas
+par(mar = c(5, 14, 4, 2))
+barplot(rev(top10$Censados), names.arg = rev(top10$Etiqueta), horiz = TRUE, las = 1,
+        col = "steelblue", main = "Top 10 municipios por personas censadas",
+        xlab = "Personas censadas", cex.names = 0.8)
+
+# Gráfico 2: mediana del tiempo en calle
+barplot(rev(top10$Mediana_anos), names.arg = rev(top10$Etiqueta), horiz = TRUE, las = 1,
+        col = "steelblue", main = "Mediana de años en calle - Top 10 municipios",
+        xlab = "Mediana de años en calle", cex.names = 0.8)
+par(mar = c(5, 4, 4, 2))
+```
+Para comparar la permanencia en calle entre municipios se utilizó la mediana y no la media, porque el tiempo en calle tiene una distribución asimétrica a la derecha, tal como se ve en la gráfica de la distribución de tiempo en calle (Sección 6.1) .Por eso se usa la mediana como medida de tendencia central, ya que es menos sensible a los valores extremos y representa mejor a la persona típica de este universo, teniendo 7 años o menos viviendo en la calle.
+
+### Conclusiones
+
+De los resultados anteriores se puede concluir lo siguiente:
+
+1. La mayoría de las personas habitantes de la calle censadas en 2021 tiene una permanencia consolidada. Solo el 18.9 % lleva menos de 2 años en la calle, mientras que el 55.4 % tiene una permanencia intermedia y el 25.7 % una prolongada, de 16 años o más. Con una mediana de 7 años y una distribución asimétrica hacia permanencias muy largas, en este sentido, la oferta institucional debe atender sobre todo situaciones ya establecidas, respondiendo a factores complejos que refuercen la permanencia a mediano y largo plazo.
+
+2. Las razones de inicio se asocian con trayectorias de permanencia distintas. Las causas más frecuentes, el consumo de sustancias psicoactivas y los conflictos familiares, se acompañan de permanencias largas, con medianas de 9 y 8 años. Las causas económicas muestran la permanencia más corta, con una mediana de 3 años y solo un 15.8 % de personas con permanencia prolongada. Esto sugiere que la vida en calle de origen económico tiende a ser más reciente, mientras que la asociada al consumo y a la ruptura de vínculos tiende a ser crónica.
+
+3. En el territorio, la población se concentra en pocos municipios: los diez principales reúnen el 84.8 % de las personas censadas, y San José de Cúcuta concentra el 19.5 %. Entre ellos hay dos patrones. Armenia, Ibagué, Pereira, Neiva y Pasto tienen permanencias prolongadas, con medianas cercanas a 10 años. San José de Cúcuta, Riohacha, Santa Marta y Yopal tienen poblaciones de llegada más reciente, con medianas de 2 a 5 años. Esta diferencia apunta a la necesidad de priorizar estrategias diferenciadas en cada grupo de municipalidades: atención sostenida en los primeros e intervención temprana en los segundos.
